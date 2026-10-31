@@ -1,78 +1,194 @@
-# Dengue Forecasting in Bangladesh (2000–2025)
+<div align="center">
 
-Research code and monthly data used to investigate dengue surveillance trends, climate associations, machine-learning forecasts, and Bayesian count models in Bangladesh.
+# Bangladesh Dengue Forecasting
 
-> **Research status:** This repository supports an academic manuscript in preparation. The repository is currently private. The dataset contains provisional or derived observations for parts of 2025 and unresolved historical source discrepancies; it should not be treated as a fully verified official surveillance release.
+### Machine Learning & Bayesian Count Models | 2000–2025
+
+**Temporal generalization · Outbreak-year evaluation · Predictive uncertainty**
+
+[![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Research](https://img.shields.io/badge/Project-Reproducible%20Research-0A7F66)](#reproducibility)
+[![Data](https://img.shields.io/badge/Data-Bangladesh%202000–2025-44546A)](#dataset)
+[![Status](https://img.shields.io/badge/Status-Research%20Code-0B7285)](#repository-structure)
+
+*A reproducible research workflow for forecasting monthly dengue cases in Bangladesh, comparing tree-based machine-learning models with Bayesian count models under temporal distribution shifts.*
+
+</div>
+
+---
+
+## Overview
+
+Dengue case counts are seasonal, overdispersed and subject to abrupt outbreaks. This project investigates how predictive models perform when evaluated on **later years rather than randomly shuffled observations**, with particular attention to the exceptional 2023 outbreak and uncertainty calibration.
+
+The associated manuscript is titled:
+
+> **Forecasting Dengue Outbreaks in Bangladesh Using Machine Learning and Bayesian Count Models: Temporal Generalization and Predictive Uncertainty, 2000–2025**
+
+This repository provides the research code, input data and supporting materials used for the analyses. It is a research workflow, **not a real-time surveillance or clinical decision tool**.
 
 ## Research questions
 
-- Do machine-learning models that perform well during validation continue to perform well during subsequent, unusually large dengue outbreaks?
-- How do Random Forest and XGBoost compare with simple historical forecasting baselines?
-- What do climate predictors, principal component analysis (PCA), feature ablation, and SHAP reveal about model behavior?
-- How adequately do Bayesian Negative Binomial (NB) and Zero-Inflated Negative Binomial (ZINB) models represent dengue counts and predictive uncertainty?
+- How do machine-learning and Bayesian count models compare on out-of-time dengue forecasts?
+- How stable are their errors during major outbreak periods?
+- How well do Bayesian predictive intervals reflect observed uncertainty?
+- Do observed model differences persist under moving-block bootstrap sensitivity checks?
 
-## Repository contents
+## Methods
+
+| Component | Approach |
+| --- | --- |
+| Machine learning | Random Forest; XGBoost; PCA-assisted variants |
+| Baselines | Previous-month persistence; seasonal naïve baseline |
+| Bayesian modeling | Negative Binomial (NB); Zero-Inflated Negative Binomial (ZINB) |
+| Predictors | Lagged dengue cases, lagged weather variables, seasonal sine/cosine features |
+| Interpretation | SHAP feature importance; feature ablation |
+| Reliability | Posterior predictive checks; MCMC convergence diagnostics |
+| Uncertainty | 89% and 95% credible intervals; 90% forecast intervals |
+| Sensitivity | Moving-block bootstrap with 3-, 6- and 12-month blocks |
+
+### Temporal evaluation
+
+The analysis has **distinct evaluation setups**; do not combine their scores as if they came from the same split.
+
+- **Bayesian NB/ZINB:** train on **2001–2019** (228 months), validate on **2020–2022** (36 months).
+- **Final machine-learning outbreak evaluation:** evaluate on **2023–2025** (36 months).
+- Additional ML validation and diagnostic analyses are implemented in the script.
+
+## Selected results
+
+### Bayesian validation: 2020–2022
+
+| Metric | NB | ZINB |
+| :--- | ---: | ---: |
+| Mean absolute error (MAE) | 2,243.86 | **2,170.10** |
+| Root mean squared error (RMSE) | 5,157.95 | **5,033.03** |
+| Empirical coverage of nominal 90% interval | **88.89%** | 86.11% |
+| Mean predictive interval width (cases) | 3,951.42 | **3,229.30** |
+
+ZINB has lower point-forecast errors and narrower intervals on this validation period, but **its empirical 90% interval coverage is lower**. These findings should not be interpreted as uniformly superior calibration.
+
+### Outbreak-year stress test: September 2023
+
+| Series / model | Monthly cases |
+| --- | ---: |
+| **Observed** | **79,598** |
+| Previous month | 71,976 |
+| Random Forest prediction | 22,508.54 |
+| XGBoost prediction | 20,264.54 |
+
+Both machine-learning models substantially underpredicted the outbreak peak. This illustrates an important limitation of models trained on earlier patterns when epidemic severity shifts sharply.
+
+### Bayesian diagnostics
+
+| Diagnostic | NB | ZINB |
+| --- | ---: | ---: |
+| Maximum R-hat | 1.003 | 1.003 |
+| Minimum bulk effective sample size | 2,032 | 1,958 |
+| Divergent transitions | 0 | 0 |
+
+Sampling employed four chains, with 1,000 tuning steps and 1,000 retained draws per chain. Convergence diagnostics are satisfactory, **but convergence does not guarantee predictive adequacy**.
+
+> **Interpretation note:** These figures are specific to the evaluation periods shown above. The machine-learning outbreak-year figures and Bayesian 2020–2022 validation figures are not directly comparable as head-to-head estimates from one shared test set.
+
+## Dataset
+
+- **Geography:** Bangladesh
+- **Frequency:** Monthly
+- **Coverage:** January 2000 – December 2025 (312 records)
+- **Main workbook:** `Data/Bangladesh_Dengue_2000_2025_Data.xlsx`
+- **Main worksheet:** `Research_Data`
+- **Outcome:** Monthly reported dengue cases
+- **Additional variables:** Dengue deaths and meteorological indicators, subject to data availability and provenance notes
+
+**Data quality:** Some historical records require further primary-source verification. Parts of the 2025 series are marked provisional or derived in the provenance audit. These values should not be represented as independently verified official monthly figures. Consult the S1 provenance table and manuscript limitations before reuse.
+
+## Repository structure
 
 ```text
 Bangladesh-Dengue-Research/
-├── 01_Dengue_EDA_PCA.ipynb
 ├── Data/
-│   └── Bangladesh_Dengue_2000_2025_UPDATED_AUDITED.xlsx
+│   └── Bangladesh_Dengue_2000_2025_Data.xlsx
+├── Dengue_Research.py        # Main research workflow
+├── requirements.txt          # Python dependencies
+├── README.md
 ├── .gitignore
-└── README.md
+└── outputs/                  # Generated locally; availability in GitHub may vary
 ```
 
-- **`01_Dengue_EDA_PCA.ipynb`** — research notebook containing analysis code. The availability of all manuscript analyses in this single notebook and clean-environment reproducibility have not yet been independently verified.
-- **`Data/Bangladesh_Dengue_2000_2025_UPDATED_AUDITED.xlsx`** — working audited research dataset, including data and accompanying documentation sheets.
+The `outputs/` directory is created or populated by running the code. Files shown as generated outputs are not necessarily committed to the repository.
 
-## Data overview
+## Reproducibility
 
-- **Geographic coverage:** Bangladesh (national monthly reported dengue counts).
-- **Time coverage:** January 2000–December 2025 (312 months).
-- **Research dataset totals:** 769,500 reported cases and 3,538 reported deaths, as recorded in this version of the workbook.
-- **Variables:** dengue cases and deaths, calendar information, meteorological variables, and source/record-status metadata.
-- **Climate data:** NASA POWER reanalysis data extracted for one reference coordinate near 23.685° N, 90.3563° E. These measurements must **not** be interpreted as spatially representative observations for every district in Bangladesh.
+### 1. Clone
 
-### Important data limitations
+```bash
+git clone https://github.com/selimmondol/Bangladesh-Dengue-Research.git
+cd Bangladesh-Dengue-Research
+```
 
-1. **2025 observations:** Some monthly surveillance records are provisional, and November–December 2025 include derived observations. Consult the workbook's record-status and source documentation before analysis or reuse.
-2. **Historical surveillance discrepancies:** Death totals for 2019 and 2023 require source reconciliation; the values in this research workbook may differ from figures published elsewhere.
-3. **Provenance:** The workbook includes source and audit metadata, but original surveillance-source traceability and public-redistribution rights require confirmation before any public dataset release.
-4. **Surveillance interpretation:** Reported cases and deaths depend on testing, case ascertainment, reporting practices, and revisions; they are not necessarily exhaustive measures of true infections and mortality.
+### 2. Create a virtual environment
 
-**Do not replace or silently correct observations** without recording the source, rationale, date, and effect on published analyses.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-## Analytical approach
+On Windows, activate with `.venv\Scripts\activate`.
 
-The manuscript's analysis includes descriptive epidemiology, seasonal patterns, lagged climate correlations, PCA, Random Forest, XGBoost, historical forecasting baselines, SHAP interpretation, feature ablation, and moving-block bootstrap comparisons. Bayesian NB and ZINB models are analyzed separately for count-model fit and validation-period predictive assessment.
+### 3. Install dependencies
 
-The principal machine-learning evaluation uses:
+```bash
+python -m pip install -r requirements.txt
+```
 
-| Stage | Period | Role |
-| --- | --- | --- |
-| Initial training | Jan 2001–Dec 2019 | Model development |
-| Validation | Jan 2020–Dec 2022 | Model comparison and selection |
-| Refit | Jan 2001–Dec 2022 | Training before final evaluation |
-| Final test | Jan 2023–Dec 2025 | Retrospective one-month-ahead evaluation |
+### 4. Run the research script
 
-The final test uses observed historical information available up to the month preceding each prediction. It is **not** a fixed-origin 36-month-ahead forecast. Bayesian NB/ZINB comparisons were evaluated on the 2020–2022 validation period, rather than the 2023–2025 ML test period.
+```bash
+python Dengue_Research.py
+```
 
-## Running the notebook
+The script expects the dataset at the relative path shown above. Run it **from the repository root**. It performs multiple analyses, including Bayesian sampling, and saves generated artifacts under `outputs/`. Runtime depends on the machine and Python environment.
 
-1. Install Python and create a virtual environment.
-2. Install the packages imported by `01_Dengue_EDA_PCA.ipynb` in your environment.
-3. Open the notebook in JupyterLab or VS Code and select the environment's Python kernel.
-4. Confirm that local dataset paths in the notebook point to `Data/Bangladesh_Dengue_2000_2025_UPDATED_AUDITED.xlsx`.
-5. Run cells in order and inspect generated figures, diagnostics, and outputs.
+### 5. Verify outputs
 
-A pinned dependency file and a fresh-environment end-to-end execution check are **not yet provided**; reproduce results with appropriate caution. Local absolute paths, if present in the notebook, may require adjustment.
+Check the terminal summaries and generated files for:
 
-## Responsible use and citation
+- Model validation and outbreak-year diagnostics
+- Moving-block bootstrap and sensitivity results (**S2**)
+- Annual data provenance (**S1**)
+- Bayesian NB/ZINB posterior and predictive diagnostics (**S3**)
 
-This dataset is assembled for secondary-data research. **Do not describe it as an official Bangladesh dengue database or assume the files carry an open redistribution license.** Check the original data providers' attribution, licensing, and redistribution terms before making the repository public, reusing, or republishing the data. Cite original surveillance and climate sources as well as the related research manuscript when its bibliographic details become available.
+For reproducibility, retain the exact input dataset, package environment and reporting period used for the manuscript.
 
-## Manuscript and contact
+## Supplementary materials
 
-Associated work: *Dengue forecasting in Bangladesh (2000–2025): temporal generalization, historical baselines, and predictive uncertainty* (working descriptive title; manuscript citation pending).
+| Supplement | Content |
+| --- | --- |
+| **S1 Table** | Annual dengue cases and deaths with source/provenance annotations |
+| **S2 Table** | Moving-block bootstrap comparisons and block-length sensitivity |
+| **S3 Table** | Bayesian MCMC diagnostics, posterior intervals, posterior predictive checks and 2020–2022 validation |
 
-Maintained by [Md Selim Mondol](https://github.com/selimmondol).
+These tables are part of the manuscript's supporting analyses. Their presence in this README **does not imply that the final journal-ready spreadsheets are committed to GitHub**.
+
+## Limitations
+
+1. Reported cases reflect surveillance and reporting processes, not necessarily all infections.
+2. Some data sources and recent monthly allocations remain provisional or await primary-source verification.
+3. Extreme outbreak peaks are difficult to extrapolate from earlier epidemiological patterns.
+4. Forecast uncertainty can be miscalibrated even when Bayesian sampling diagnostics look good.
+5. Results depend on the particular temporal split and should not be generalized to prospective deployment without fresh validation.
+
+## Citation
+
+If you use this repository, cite the associated manuscript and link to the specific Git commit used for reproducibility. Publication metadata (journal, DOI and final citation) should be added only after it is confirmed.
+
+**Code repository:** [selimmondol/Bangladesh-Dengue-Research](https://github.com/selimmondol/Bangladesh-Dengue-Research)
+
+## Authors
+
+Research collaboration associated with the above manuscript, including **Md Selim Mondol** (Heinrich Heine University Düsseldorf) and **Mst Sumaya Sultana** (Begum Rokeya University, Rangpur).
+
+---
+
+<div align="center"><sub>Research repository · Bangladesh dengue forecasting · 2000–2025</sub></div>
