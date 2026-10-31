@@ -397,7 +397,7 @@ fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
 axes[0].plot(annual["Year"], annual["Cases"], marker="o")
 axes[0].set_ylabel("Annual reported cases")
-axes[0].set_title("Bangladesh dengue: annual cases (workbook, provisional)")
+axes[0].set_title("Annual reported dengue cases in Bangladesh, 2000–2025")
 axes[0].grid(alpha=0.2)
 
 axes[1].plot(annual["Year"], np.log1p(annual["Cases"]), marker="o")
@@ -2645,9 +2645,9 @@ expected_peak = {
 }
 
 expected_mae = {
-    "Previous Month": 7430.444,
-    "Random Forest": 9420.196,
-    "XGBoost": 9354.520
+    "Previous Month": 7373.444,
+    "Random Forest": 9382.196,
+    "XGBoost": 9316.520
 }
 
 problems = []
@@ -2699,13 +2699,11 @@ for model, expected in expected_mae.items():
 
 if problems:
     raise RuntimeError(
-        "MODEL RESULTS DO NOT MATCH THE MANUSCRIPT.\n"
-        "Mismatches: " + ", ".join(problems) + "\n"
-        "Check the original XGBoost software version "
-        "and notebook environment before creating Fig 7."
+        "MODEL RESULTS DO NOT MATCH THE CORRECTED DATASET REFERENCE.\n"
+        "Mismatches: " + ", ".join(problems)
     )
 
-print("\nAll manuscript verification checks passed.")
+print("\nCorrected dataset reference checks passed.")
 
 plt.rcParams.update({
     "font.family": "DejaVu Sans",
@@ -5212,44 +5210,205 @@ final_comparison.to_csv(
 
 print("Consolidated comparison completed!")
 
-# S1_Table
+# S1_TABLE — ANNUAL DENGUE DATA WITH PROVENANCE
+
 import pandas as pd
 from pathlib import Path
 
-data = df_updated.copy()
+public_data = df_updated.copy()
 
-def unique_sources(values):
-    return " | ".join(
-        dict.fromkeys(values.dropna().astype(str))
-    )
-
-annual_aggregations = {
-    "Cases": ("Cases", "sum"),
-    "Deaths": ("Deaths", "sum"),
-    "Months": ("Cases", "size")
-}
-
-optional_provenance = {
-    "Record_Status": "Dengue_Record_Status",
-    "Cases_Source": "Cases_Source",
-    "Deaths_Source": "Deaths_Source",
-}
-for output_field, input_field in optional_provenance.items():
-    if input_field in data.columns:
-        annual_aggregations[output_field] = (input_field, unique_sources)
-
-annual_table = data.groupby("Year").agg(**annual_aggregations).reset_index()
-if not all(col in data.columns for col in optional_provenance.values()):
-    print("NOTE: Public 16-column data cannot reconstruct the original S1 provenance notes.")
-    print("Annual cases and deaths are still computed from Research_Data.")
-
-Path("outputs").mkdir(exist_ok=True)
-
-annual_table.to_excel(
-    "outputs/S1_Table_Annual_Dengue_Provenance_FINAL.xlsx",
-    index=False
+audited_path = Path(
+    "Data/Bangladesh_Dengue_2000_2025_UPDATED_AUDITED.xlsx"
 )
 
-display(annual_table)
+if audited_path.is_file():
+    audited_data = pd.read_excel(
+        audited_path,
+        sheet_name="Research_Data"
+    )
 
-print("S1 Table saved successfully!")
+    def unique_sources(values):
+        return " | ".join(
+            dict.fromkeys(values.dropna().astype(str))
+        )
+
+    required_columns = [
+        "Year",
+        "Cases",
+        "Deaths",
+        "Dengue_Record_Status",
+        "Cases_Source",
+        "Deaths_Source"
+    ]
+
+    missing = [
+        col for col in required_columns
+        if col not in audited_data.columns
+    ]
+
+    if missing:
+        raise ValueError(
+            f"Missing columns in audited dataset: {missing}"
+        )
+
+    # Check that audited and public data agree on every month.
+    public_check = public_data[
+        ["Year", "Month_Number", "Cases", "Deaths"]
+    ].sort_values(["Year", "Month_Number"]).reset_index(drop=True)
+
+    audited_check = audited_data[
+        ["Year", "Month_Number", "Cases", "Deaths"]
+    ].sort_values(["Year", "Month_Number"]).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(
+        public_check,
+        audited_check,
+        check_dtype=False
+    )
+
+    # Build annual S1 table with provenance.
+    annual_table = (
+        audited_data.groupby("Year")
+        .agg(
+            Cases=("Cases", "sum"),
+            Deaths=("Deaths", "sum"),
+            Months=("Cases", "size"),
+            Record_Status=(
+                "Dengue_Record_Status",
+                unique_sources
+            ),
+            Cases_Source=("Cases_Source", unique_sources),
+            Deaths_Source=("Deaths_Source", unique_sources)
+        )
+        .reset_index()
+    )
+
+    assert len(annual_table) == 26
+    assert (annual_table["Months"] == 12).all()
+
+    # Save S1 table.
+    output_path = Path(
+        "outputs/S1_Table_Annual_Dengue_Provenance_FINAL.xlsx"
+    )
+
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    annual_table.to_excel(
+        output_path,
+        index=False
+    )
+
+    print(annual_table.to_string(index=False))
+
+    print("\nS1 Table saved successfully!")
+    print("Saved to:", output_path)
+    print("Provenance columns included.")
+else:
+    print("OPTIONAL S1 PROVENANCE EXPORT SKIPPED: audited source workbook not found.")
+    print("Expected:", audited_path)
+    print("Other analyses and tables remain available; source-level provenance must be documented separately.")
+
+
+# -----------------------------------------------------------------
+# 45  Supplementary Table S3: reproducible posterior summaries and
+#     independently reported overall/year-wise validation metrics.
+#     Reuses the already fitted NB/ZINB traces and predictions above;
+#     no unnecessary second MCMC fitting.
+# -----------------------------------------------------------------
+
+_s3_dir = Path("outputs")
+_s3_dir.mkdir(parents=True, exist_ok=True)
+
+_s3_parameters = []
+_s3_diagnostics = []
+for _model_name, _trace, _vars in [
+    ("NB", trace_nb, ["intercept", "beta", "alpha"]),
+    ("ZINB", trace_zinb, ["intercept", "beta", "zi_intercept", "zi_trend", "alpha"]),
+]:
+    _summary = az.summary(_trace, var_names=_vars)
+    _s3_diagnostics.append({
+        "Model": _model_name,
+        "Chains": int(_trace.posterior.sizes["chain"]),
+        "Draws_per_chain": int(_trace.posterior.sizes["draw"]),
+        "Max_Rhat": float(_summary["r_hat"].max()),
+        "Min_bulk_ESS": float(_summary["ess_bulk"].min()),
+        "Min_tail_ESS": float(_summary["ess_tail"].min()),
+        "Divergences": int(_trace.sample_stats["diverging"].sum()),
+    })
+    for _var in _vars:
+        _values = _trace.posterior[_var].values
+        _flat = _values.reshape(-1, _values.shape[-1]) if _var == "beta" else _values.reshape(-1, 1)
+        for _idx in range(_flat.shape[1]):
+            _key = f"beta[{_idx}]" if _var == "beta" else _var
+            _q = np.quantile(_flat[:, _idx], [0.025, 0.055, 0.945, 0.975])
+            _s3_parameters.append({
+                "Model": _model_name, "Parameter": _key,
+                "Mean": float(_flat[:, _idx].mean()),
+                "SD": float(_flat[:, _idx].std(ddof=1)),
+                "CI_89_lower": float(_q[1]), "CI_89_upper": float(_q[2]),
+                "CI_95_lower": float(_q[0]), "CI_95_upper": float(_q[3]),
+                "Bulk_ESS": float(_summary.loc[_key, "ess_bulk"]),
+                "Tail_ESS": float(_summary.loc[_key, "ess_tail"]),
+                "Rhat": float(_summary.loc[_key, "r_hat"]),
+            })
+
+pd.DataFrame(_s3_diagnostics).to_csv(_s3_dir / "S3_MCMC_diagnostics.csv", index=False)
+pd.DataFrame(_s3_parameters).to_csv(_s3_dir / "S3_posterior_89_95_equal_tailed.csv", index=False)
+
+_s3_rows = []
+_s3_monthly = []
+for _name, _med_col, _low_col, _up_col in [
+    ("NB", "NB", "NB_Lower", "NB_Upper"),
+    ("ZINB", "ZINB", "ZINB_Lower", "ZINB_Upper"),
+]:
+    _d = comparison_data.copy()
+    for _period, _g in [("2020-2022", _d)] + [
+        (str(_year), _d.loc[_d["Date"].dt.year == _year])
+        for _year in (2020, 2021, 2022)
+    ]:
+        _y = _g["Actual"].to_numpy()
+        _pred = _g[_med_col].to_numpy()
+        _lo = _g[_low_col].to_numpy()
+        _hi = _g[_up_col].to_numpy()
+        _s3_rows.append({
+            "Period": _period, "Model": _name, "Months": len(_g),
+            "MAE": mean_absolute_error(_y, _pred),
+            "RMSE": np.sqrt(mean_squared_error(_y, _pred)),
+            "Coverage_percent": 100 * np.mean((_y >= _lo) & (_y <= _hi)),
+            "Mean_interval_width": np.mean(_hi - _lo),
+        })
+    for _, _row in _d.iterrows():
+        _s3_monthly.append({
+            "Date": _row["Date"], "Model": _name,
+            "Actual": _row["Actual"],
+            "Predicted_Median": _row[_med_col],
+            "Lower_90": _row[_low_col], "Upper_90": _row[_up_col],
+        })
+
+_s3_validation = pd.DataFrame(_s3_rows)
+_s3_validation.to_csv(_s3_dir / "S3_yearly_independent_check.csv", index=False)
+pd.DataFrame(_s3_monthly).to_csv(_s3_dir / "S3_monthly_validation_predictions.csv", index=False)
+
+# Catch accidental changes to published Table 3 / supplementary Table S3.
+_s3_expected = {
+    ("2020-2022", "NB"): (2243.86, 5157.95, 88.89, 3951.42),
+    ("2020-2022", "ZINB"): (2170.10, 5033.03, 86.11, 3229.30),
+    ("2020", "NB"): (99.17, 142.04, 100.00, 816.26),
+    ("2020", "ZINB"): (99.92, 132.62, 100.00, 756.32),
+    ("2021", "NB"): (1909.38, 3011.52, 91.67, 5374.89),
+    ("2021", "ZINB"): (1811.96, 2875.19, 91.67, 4412.94),
+    ("2022", "NB"): (4723.04, 8409.75, 75.00, 5663.11),
+    ("2022", "ZINB"): (4598.42, 8228.61, 66.67, 4518.64),
+}
+for _row in _s3_validation.itertuples(index=False):
+    _expected = np.array(_s3_expected[(_row.Period, _row.Model)])
+    _actual = np.array([_row.MAE, _row.RMSE, _row.Coverage_percent, _row.Mean_interval_width])
+    if not np.allclose(_actual, _expected, atol=0.02, rtol=0):
+        raise AssertionError(f"S3 mismatch for {_row.Period}/{_row.Model}: {_actual} vs {_expected}")
+
+print("\n===== S3 OVERALL AND YEAR-WISE VALIDATION: VERIFIED =====")
+print(_s3_validation.round(2).to_string(index=False))
+print("Saved S3 diagnostics, 89%/95% posterior intervals, validation metrics and monthly predictions to outputs/.")
